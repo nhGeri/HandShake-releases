@@ -50,65 +50,58 @@ class _HandshakeScreenState extends State<HandshakeScreen>
     }
 
     NfcManager.instance.startSession(
+      pollingOptions: {NfcPollingOption.iso14443, NfcPollingOption.iso15693},
       onDiscovered: (NfcTag tag) async {
         try {
-          // A hivatalos Ndef segédosztály használata
           final ndef = Ndef.from(tag);
 
-          if (ndef == null) {
-            if (mounted) {
-              setState(() {
-                _statusText = 'Ez nem egy HandShake kártya/telefon. Próbáld újra!';
-              });
-            }
-            return;
-          }
+          if (ndef != null) {
+            final message = ndef.cachedMessage;
+            if (message != null && message.records.isNotEmpty) {
+              for (var record in message.records) {
+                // A payload első byte-ja gyakran a nyelvi kód hossza (pl. 'en' esetén 2)
+                // Ezért keressük a kulcsszót a teljes payloadban
+                final payload = String.fromCharCodes(record.payload);
+                if (payload.contains('handshake:')) {
+                  final startIndex = payload.indexOf('handshake:') + 'handshake:'.length;
+                  final jsonStr = payload.substring(startIndex);
+                  final data = jsonDecode(jsonStr);
+                  final friendName = data['name'] ?? 'Ismeretlen';
 
-          // OLVASÁS
-          final message = ndef.cachedMessage;
-          if (message != null && message.records.isNotEmpty) {
-            for (var record in message.records) {
-              // NDEF Text record keresése
-              final payload = String.fromCharCodes(record.payload);
-              // A Text record elején ott van a nyelvi kód (pl. 'en'), ezt átugorjuk
-              if (payload.contains('handshake:')) {
-                final startIndex = payload.indexOf('handshake:') + 'handshake:'.length;
-                final jsonStr = payload.substring(startIndex);
-                final data = jsonDecode(jsonStr);
-                final friendName = data['name'] ?? 'Ismeretlen';
-
-                if (mounted) {
-                  setState(() {
-                    _nfcState = NfcState.success;
-                    _foundFriendName = friendName;
-                    _statusText = '🎉 Sikeres HandShake!';
-                    _controller.stop();
-                  });
+                  if (mounted) {
+                    setState(() {
+                      _nfcState = NfcState.success;
+                      _foundFriendName = friendName;
+                      _statusText = '🎉 Sikeres HandShake!';
+                      _controller.stop();
+                    });
+                  }
+                  _userState.addHandshake(friendName);
+                  await NfcManager.instance.stopSession();
+                  return;
                 }
-                _userState.addHandshake(friendName);
-                await NfcManager.instance.stopSession();
-                return;
               }
             }
-          }
 
-          // ÍRÁS: Ha nem találtunk adatot, ráírjuk a sajátunkat
-          if (ndef.isWritable) {
-            final myData = jsonEncode({
-              'name': _userState.displayName,
-              'app': 'HandShake',
-            });
-            
-            final ndefMessage = NdefMessage([
-              NdefRecord.createText('handshake:$myData'),
-            ]);
-
-            await ndef.write(ndefMessage);
-            
-            if (mounted) {
-              setState(() {
-                _statusText = 'Adatok átadva! Most a másik telefon olvassa...';
+            // ÍRÁS
+            if (ndef.isWritable) {
+              final myData = jsonEncode({
+                'name': _userState.displayName,
+                'app': 'HandShake',
               });
+              
+              // Itt az NdefRecord.createText használata a legbiztosabb
+              final ndefMessage = NdefMessage([
+                NdefRecord.createText('handshake:$myData'),
+              ]);
+
+              await ndef.write(ndefMessage);
+              
+              if (mounted) {
+                setState(() {
+                  _statusText = 'Adatok átadva! Várjuk a választ...';
+                });
+              }
             }
           }
         } catch (e) {
@@ -161,7 +154,6 @@ class _HandshakeScreenState extends State<HandshakeScreen>
               ),
               const SizedBox(height: 50),
 
-              // Animáció
               if (_nfcState == NfcState.scanning)
                 AnimatedBuilder(
                   animation: _controller,
@@ -175,7 +167,7 @@ class _HandshakeScreenState extends State<HandshakeScreen>
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
                             border: Border.all(
-                              color: Colors.blue.withOpacity(1 - _controller.value),
+                              color: Colors.blue.withValues(alpha: 1 - _controller.value),
                               width: 3,
                             ),
                           ),
@@ -187,8 +179,8 @@ class _HandshakeScreenState extends State<HandshakeScreen>
                             shape: BoxShape.circle,
                             gradient: RadialGradient(
                               colors: [
-                                Colors.blue.withOpacity(0.3),
-                                Colors.blue.withOpacity(0.1),
+                                Colors.blue.withValues(alpha: 0.3),
+                                Colors.blue.withValues(alpha: 0.1),
                                 Colors.transparent,
                               ],
                             ),
@@ -206,7 +198,7 @@ class _HandshakeScreenState extends State<HandshakeScreen>
                   height: 200,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: Colors.green.withOpacity(0.15),
+                    color: Colors.green.withValues(alpha: 0.15),
                     border: Border.all(color: Colors.green, width: 3),
                   ),
                   child: const Icon(Icons.handshake, size: 100, color: Colors.green),
@@ -217,7 +209,7 @@ class _HandshakeScreenState extends State<HandshakeScreen>
                   height: 200,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: Colors.red.withOpacity(0.1),
+                    color: Colors.red.withValues(alpha: 0.1),
                     border: Border.all(color: Colors.red, width: 3),
                   ),
                   child: const Icon(Icons.error_outline, size: 100, color: Colors.red),
