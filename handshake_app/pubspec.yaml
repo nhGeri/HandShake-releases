@@ -1,7 +1,7 @@
 name: handshake_app
 description: "A new Flutter project."
 publish_to: 'none'
-version: 1.2.5+7
+version: 1.2.6+8
 
 environment:
   sdk: '>=3.2.0 <4.0.0'
@@ -17,7 +17,6 @@ dependencies:
   google_maps_flutter:
   geolocator:
   geocoding:
-  nfc_manager:
   flutter_bloc:
   equatable:
   get_it:
@@ -44,6 +43,9 @@ dependencies:
   path_provider: ^2.1.5
   open_filex: ^4.7.0
   qr_flutter: ^4.1.0
+  mobile_scanner: ^3.5.2
+  nfc_manager: ^4.2.1
+  ndef_record: ^1.4.2
   url_launcher: ^6.3.2
 
 dev_dependencies:
