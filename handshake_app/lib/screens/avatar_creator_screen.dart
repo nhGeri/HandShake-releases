@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:flutter/foundation.dart';
-import 'package:webview_flutter_platform_interface/webview_flutter_platform_interface.dart';
 import '../state/user_state.dart';
 
 class AvatarCreatorScreen extends StatefulWidget {

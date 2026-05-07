@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:nfc_manager/nfc_manager.dart';
 import '../state/user_state.dart';
@@ -38,7 +39,6 @@ class _HandshakeScreenState extends State<HandshakeScreen>
   }
 
   Future<void> _startNfc() async {
-    // NFC elérhetőség ellenőrzése
     final isAvailable = await NfcManager.instance.isAvailable();
     if (!isAvailable) {
       if (mounted) {
@@ -50,71 +50,80 @@ class _HandshakeScreenState extends State<HandshakeScreen>
       return;
     }
 
-    // NFC session indítás - NDEF olvasás + írás egyszerre
     NfcManager.instance.startSession(
+      pollingOptions: {NfcPollingOption.iso14443, NfcPollingOption.iso15693},
       onDiscovered: (NfcTag tag) async {
         try {
-          // 1. Megpróbáljuk kiolvasni az NFC taget
-          final ndef = Ndef.from(tag);
+          // nfc_manager 4.x: tag.data is Map<String, dynamic> at runtime
+          final tagData = Map<String, dynamic>.from(tag.data as Map);
+          final ndefTag = tagData.containsKey('ndef') ? tagData : null;
 
-          if (ndef != null) {
-            // OLVASÁS: van-e rajta HandShake adat?
-            final cachedMessage = ndef.cachedMessage;
-            if (cachedMessage != null && cachedMessage.records.isNotEmpty) {
-              final record = cachedMessage.records.first;
-              final payload = String.fromCharCodes(record.payload.skip(3));
+          if (ndefTag != null) {
+            final ndefData = ndefTag['ndef'] as Map?;
+            final cachedMessage = ndefData?['cachedMessage'] as Map?;
+            final records = cachedMessage?['records'] as List?;
 
-              if (payload.startsWith('handshake:')) {
-                // Megtaláltuk a barát adatait!
-                final data = jsonDecode(payload.substring('handshake:'.length));
-                final friendName = data['name'] ?? 'Ismeretlen';
+            if (records != null && records.isNotEmpty) {
+              final firstRecord = records.first as Map?;
+              final payload = firstRecord?['payload'];
 
-                if (mounted) {
-                  setState(() {
-                    _nfcState = NfcState.success;
-                    _foundFriendName = friendName;
-                    _statusText = '🎉 Sikeres HandShake!';
-                    _controller.stop();
-                  });
+              if (payload != null) {
+                List<int> bytes;
+                if (payload is List<int>) {
+                  bytes = payload;
+                } else if (payload is List) {
+                  bytes = payload.map<int>((e) => e as int).toList();
+                } else if (payload is Uint8List) {
+                  bytes = payload;
+                } else {
+                  bytes = [];
                 }
 
-                // Pontot adjunk és kézfogást növelünk
-                _userState.addHandshake(friendName);
+                if (bytes.length > 3) {
+                  final text = String.fromCharCodes(bytes.skip(3));
+                  if (text.startsWith('handshake:')) {
+                    final jsonStr = text.substring('handshake:'.length);
+                    final data = jsonDecode(jsonStr) as Map<String, dynamic>;
+                    final friendName = data['name'] as String? ?? 'Ismeretlen';
 
-                await NfcManager.instance.stopSession();
-                return;
+                    if (mounted) {
+                      setState(() {
+                        _nfcState = NfcState.success;
+                        _foundFriendName = friendName;
+                        _statusText = '🎉 Sikeres HandShake!';
+                        _controller.stop();
+                      });
+                    }
+                    _userState.addHandshake(friendName);
+                    await NfcManager.instance.stopSession();
+                    return;
+                  }
+                }
               }
             }
 
-            // ÍRÁS: ha a tag üres/nem HandShake, írjuk rá a saját adatainkat
-            if (ndef.isWritable) {
-              final myData = jsonEncode({
-                'name': _userState.displayName,
-                'app': 'HandShake',
-                'version': '1.1.0',
+            // Ha nem sikerült olvasni HandShake adatot,
+            // mutassuk hogy a TAG fel van ismerve, de nincs rajta adat
+            if (mounted) {
+              setState(() {
+                _statusText = 'Tag felismerve! Várjuk a másik telefont...';
               });
-
-              final message = NdefMessage([
-                NdefRecord.createText('handshake:$myData'),
-              ]);
-
-              await ndef.write(message);
-
-              if (mounted) {
-                setState(() {
-                  _statusText = 'Adatok elküldve! Várjuk a másik telefont...';
-                });
-              }
+            }
+          } else {
+            if (mounted) {
+              setState(() {
+                _statusText = 'Nem NDEF kompatibilis tag. Próbáld újra!';
+              });
             }
           }
         } catch (e) {
           if (mounted) {
             setState(() {
               _nfcState = NfcState.error;
-              _statusText = 'Hiba történt: $e';
+              _statusText = 'Hiba: $e';
             });
           }
-          await NfcManager.instance.stopSession(errorMessage: 'Hiba: $e');
+          await NfcManager.instance.stopSession();
         }
       },
     );
@@ -135,7 +144,6 @@ class _HandshakeScreenState extends State<HandshakeScreen>
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // Állapot-specifikus fejléc szöveg
               Text(
                 _nfcState == NfcState.success
                     ? '🤝 ÖSSZEJÖTT!'
@@ -158,7 +166,7 @@ class _HandshakeScreenState extends State<HandshakeScreen>
               ),
               const SizedBox(height: 50),
 
-              // Animált kör / státusz ikon
+              // Animált ikon
               if (_nfcState == NfcState.scanning)
                 AnimatedBuilder(
                   animation: _controller,
@@ -239,7 +247,6 @@ class _HandshakeScreenState extends State<HandshakeScreen>
 
               const SizedBox(height: 50),
 
-              // Állapot szöveg
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 32),
                 child: Text(
@@ -249,7 +256,6 @@ class _HandshakeScreenState extends State<HandshakeScreen>
                 ),
               ),
 
-              // Sikeres párosítás esetén barát neve
               if (_nfcState == NfcState.success && _foundFriendName != null) ...[
                 const SizedBox(height: 16),
                 Container(
@@ -277,7 +283,6 @@ class _HandshakeScreenState extends State<HandshakeScreen>
 
               const SizedBox(height: 40),
 
-              // Gombok
               if (_nfcState == NfcState.success)
                 ElevatedButton.icon(
                   onPressed: () => Navigator.pop(context),
@@ -298,7 +303,9 @@ class _HandshakeScreenState extends State<HandshakeScreen>
                         setState(() {
                           _nfcState = NfcState.scanning;
                           _statusText = 'Érintsd össze a telefonokat!';
+                          _foundFriendName = null;
                         });
+                        _controller.repeat();
                         _startNfc();
                       },
                       icon: const Icon(Icons.refresh),
