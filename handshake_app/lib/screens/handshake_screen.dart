@@ -1,6 +1,10 @@
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:nfc_manager/nfc_manager.dart';
+import 'package:nfc_manager/nfc_manager_android.dart';
+import 'package:ndef_record/ndef_record.dart';
+
 import '../state/user_state.dart';
 
 enum NfcState { scanning, success, error, noNfc }
@@ -53,14 +57,12 @@ class _HandshakeScreenState extends State<HandshakeScreen>
       pollingOptions: {NfcPollingOption.iso14443, NfcPollingOption.iso15693},
       onDiscovered: (NfcTag tag) async {
         try {
-          final ndef = Ndef.from(tag);
+          final ndef = NdefAndroid.from(tag);
 
           if (ndef != null) {
-            final message = ndef.cachedMessage;
+            final message = ndef.cachedNdefMessage;
             if (message != null && message.records.isNotEmpty) {
               for (var record in message.records) {
-                // A payload első byte-ja gyakran a nyelvi kód hossza (pl. 'en' esetén 2)
-                // Ezért keressük a kulcsszót a teljes payloadban
                 final payload = String.fromCharCodes(record.payload);
                 if (payload.contains('handshake:')) {
                   final startIndex = payload.indexOf('handshake:') + 'handshake:'.length;
@@ -90,17 +92,29 @@ class _HandshakeScreenState extends State<HandshakeScreen>
                 'app': 'HandShake',
               });
               
-              // Itt az NdefRecord.createText használata a legbiztosabb
-              final ndefMessage = NdefMessage([
-                NdefRecord.createText('handshake:$myData'),
-              ]);
+              try {
+                final content = 'handshake:$myData';
+                // Kézzel összerakjuk a Text Record bájtokat: [lang_len, l, a, n, g, t, e, x, t...]
+                final textBytes = utf8.encode(content);
+                final payload = Uint8List.fromList([0x02, 0x65, 0x6E, ...textBytes]); // 0x02 = lang len, 'en'
 
-              await ndef.write(ndefMessage);
-              
-              if (mounted) {
-                setState(() {
-                  _statusText = 'Adatok átadva! Várjuk a választ...';
-                });
+                final record = NdefRecord(
+                  typeNameFormat: TypeNameFormat.wellKnown,
+                  type: Uint8List.fromList([0x54]), // 'T' = Text record
+                  identifier: Uint8List.fromList([]),
+                  payload: payload,
+                );
+
+                final ndefMessage = NdefMessage(records: [record]);
+                await ndef.writeNdefMessage(ndefMessage);
+                
+                if (mounted) {
+                  setState(() {
+                    _statusText = 'Adatok átadva! Várjuk a választ...';
+                  });
+                }
+              } catch (writeError) {
+                debugPrint('NFC Írás hiba: $writeError');
               }
             }
           }
