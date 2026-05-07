@@ -5,6 +5,8 @@ import 'avatar_viewer_screen.dart';
 import '../services/update_service.dart';
 import 'update_dialog.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class ProfileSettingsScreen extends StatefulWidget {
   const ProfileSettingsScreen({super.key});
@@ -168,20 +170,47 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
                       ),
                     ),
                   ),
+                  const SizedBox(height: 12),
+                  // Verziószám badge
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.07),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: Colors.white12),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.info_outline, size: 13, color: Colors.white38),
+                        const SizedBox(width: 5),
+                        Text(
+                          _currentVersion != null ? 'v$_currentVersion' : 'v...',
+                          style: const TextStyle(color: Colors.white38, fontSize: 12),
+                        ),
+                      ],
+                    ),
+                  ),
                 ],
               ),
             ),
           ),
           const SizedBox(height: 16),
 
-          // QR KÓD KÁRTYA
+          // QR KÓD KÁRTYA - App letöltés
           Card(
             color: const Color(0xFF1D2137),
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Column(
                 children: [
-                  const Text('A te HandShake kódod', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                  const Text('📲 App letöltése', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 4),
+                  const Text(
+                    'Szkenneld be a QR kódot a HandShake letöltéséhez!',
+                    style: TextStyle(color: Colors.white60, fontSize: 12),
+                    textAlign: TextAlign.center,
+                  ),
                   const SizedBox(height: 16),
                   Container(
                     padding: const EdgeInsets.all(12),
@@ -190,16 +219,64 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
                       borderRadius: BorderRadius.circular(16),
                     ),
                     child: QrImageView(
-                      data: 'handshake_user_${userState.displayName}',
+                      data: 'https://github.com/nhGeri/HandShake-releases/releases/latest',
                       version: QrVersions.auto,
-                      size: 160.0,
+                      size: 180.0,
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'Mutasd meg ezt a kódod a barátaidnak a hozzáadáshoz!',
-                    style: TextStyle(color: Colors.white60, fontSize: 12),
-                    textAlign: TextAlign.center,
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF0A0E21),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Text(
+                      'github.com/nhGeri/HandShake-releases',
+                      style: TextStyle(color: Colors.white54, fontSize: 11),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () {
+                            Clipboard.setData(const ClipboardData(
+                              text: 'https://github.com/nhGeri/HandShake-releases/releases/latest',
+                            ));
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('📋 Link másolva!'),
+                                backgroundColor: Colors.green,
+                                duration: Duration(seconds: 2),
+                              ),
+                            );
+                          },
+                          icon: const Icon(Icons.copy, size: 16),
+                          label: const Text('Link másolása'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.white70,
+                            side: const BorderSide(color: Colors.white24),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: () => launchUrl(
+                            Uri.parse('https://github.com/nhGeri/HandShake-releases/releases/latest'),
+                            mode: LaunchMode.externalApplication,
+                          ),
+                          icon: const Icon(Icons.download, size: 16),
+                          label: const Text('Letöltés'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF6C63FF),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
