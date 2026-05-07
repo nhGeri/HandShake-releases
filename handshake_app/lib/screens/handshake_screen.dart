@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:nfc_manager/nfc_manager.dart';
 import '../state/user_state.dart';
@@ -44,75 +43,71 @@ class _HandshakeScreenState extends State<HandshakeScreen>
       if (mounted) {
         setState(() {
           _nfcState = NfcState.noNfc;
-          _statusText = 'Ez a telefon nem támogatja az NFC-t, vagy ki van kapcsolva!';
+          _statusText = 'Az NFC ki van kapcsolva vagy nem támogatott!';
         });
       }
       return;
     }
 
     NfcManager.instance.startSession(
-      pollingOptions: {NfcPollingOption.iso14443, NfcPollingOption.iso15693},
       onDiscovered: (NfcTag tag) async {
         try {
-          // nfc_manager 4.x: tag.data is Map<String, dynamic> at runtime
-          final tagData = Map<String, dynamic>.from(tag.data as Map);
-          final ndefTag = tagData.containsKey('ndef') ? tagData : null;
+          // A hivatalos Ndef segédosztály használata
+          final ndef = Ndef.from(tag);
 
-          if (ndefTag != null) {
-            final ndefData = ndefTag['ndef'] as Map?;
-            final cachedMessage = ndefData?['cachedMessage'] as Map?;
-            final records = cachedMessage?['records'] as List?;
-
-            if (records != null && records.isNotEmpty) {
-              final firstRecord = records.first as Map?;
-              final payload = firstRecord?['payload'];
-
-              if (payload != null) {
-                List<int> bytes;
-                if (payload is List<int>) {
-                  bytes = payload;
-                } else if (payload is List) {
-                  bytes = payload.map<int>((e) => e as int).toList();
-                } else if (payload is Uint8List) {
-                  bytes = payload;
-                } else {
-                  bytes = [];
-                }
-
-                if (bytes.length > 3) {
-                  final text = String.fromCharCodes(bytes.skip(3));
-                  if (text.startsWith('handshake:')) {
-                    final jsonStr = text.substring('handshake:'.length);
-                    final data = jsonDecode(jsonStr) as Map<String, dynamic>;
-                    final friendName = data['name'] as String? ?? 'Ismeretlen';
-
-                    if (mounted) {
-                      setState(() {
-                        _nfcState = NfcState.success;
-                        _foundFriendName = friendName;
-                        _statusText = '🎉 Sikeres HandShake!';
-                        _controller.stop();
-                      });
-                    }
-                    _userState.addHandshake(friendName);
-                    await NfcManager.instance.stopSession();
-                    return;
-                  }
-                }
-              }
-            }
-
-            // Ha nem sikerült olvasni HandShake adatot,
-            // mutassuk hogy a TAG fel van ismerve, de nincs rajta adat
+          if (ndef == null) {
             if (mounted) {
               setState(() {
-                _statusText = 'Tag felismerve! Várjuk a másik telefont...';
+                _statusText = 'Ez nem egy HandShake kártya/telefon. Próbáld újra!';
               });
             }
-          } else {
+            return;
+          }
+
+          // OLVASÁS
+          final message = ndef.cachedMessage;
+          if (message != null && message.records.isNotEmpty) {
+            for (var record in message.records) {
+              // NDEF Text record keresése
+              final payload = String.fromCharCodes(record.payload);
+              // A Text record elején ott van a nyelvi kód (pl. 'en'), ezt átugorjuk
+              if (payload.contains('handshake:')) {
+                final startIndex = payload.indexOf('handshake:') + 'handshake:'.length;
+                final jsonStr = payload.substring(startIndex);
+                final data = jsonDecode(jsonStr);
+                final friendName = data['name'] ?? 'Ismeretlen';
+
+                if (mounted) {
+                  setState(() {
+                    _nfcState = NfcState.success;
+                    _foundFriendName = friendName;
+                    _statusText = '🎉 Sikeres HandShake!';
+                    _controller.stop();
+                  });
+                }
+                _userState.addHandshake(friendName);
+                await NfcManager.instance.stopSession();
+                return;
+              }
+            }
+          }
+
+          // ÍRÁS: Ha nem találtunk adatot, ráírjuk a sajátunkat
+          if (ndef.isWritable) {
+            final myData = jsonEncode({
+              'name': _userState.displayName,
+              'app': 'HandShake',
+            });
+            
+            final ndefMessage = NdefMessage([
+              NdefRecord.createText('handshake:$myData'),
+            ]);
+
+            await ndef.write(ndefMessage);
+            
             if (mounted) {
               setState(() {
-                _statusText = 'Nem NDEF kompatibilis tag. Próbáld újra!';
+                _statusText = 'Adatok átadva! Most a másik telefon olvassa...';
               });
             }
           }
@@ -166,7 +161,7 @@ class _HandshakeScreenState extends State<HandshakeScreen>
               ),
               const SizedBox(height: 50),
 
-              // Animált ikon
+              // Animáció
               if (_nfcState == NfcState.scanning)
                 AnimatedBuilder(
                   animation: _controller,
@@ -206,24 +201,15 @@ class _HandshakeScreenState extends State<HandshakeScreen>
                   },
                 )
               else if (_nfcState == NfcState.success)
-                TweenAnimationBuilder<double>(
-                  tween: Tween(begin: 0.0, end: 1.0),
-                  duration: const Duration(milliseconds: 600),
-                  builder: (context, value, child) {
-                    return Transform.scale(
-                      scale: value,
-                      child: Container(
-                        width: 200,
-                        height: 200,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: Colors.green.withOpacity(0.15),
-                          border: Border.all(color: Colors.green, width: 3),
-                        ),
-                        child: const Icon(Icons.handshake, size: 100, color: Colors.green),
-                      ),
-                    );
-                  },
+                Container(
+                  width: 200,
+                  height: 200,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.green.withOpacity(0.15),
+                    border: Border.all(color: Colors.green, width: 3),
+                  ),
+                  child: const Icon(Icons.handshake, size: 100, color: Colors.green),
                 )
               else
                 Container(
@@ -231,18 +217,10 @@ class _HandshakeScreenState extends State<HandshakeScreen>
                   height: 200,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: (_nfcState == NfcState.error ? Colors.red : Colors.orange)
-                        .withOpacity(0.15),
-                    border: Border.all(
-                      color: _nfcState == NfcState.error ? Colors.red : Colors.orange,
-                      width: 3,
-                    ),
+                    color: Colors.red.withOpacity(0.1),
+                    border: Border.all(color: Colors.red, width: 3),
                   ),
-                  child: Icon(
-                    _nfcState == NfcState.error ? Icons.error_outline : Icons.nfc_outlined,
-                    size: 100,
-                    color: _nfcState == NfcState.error ? Colors.red : Colors.orange,
-                  ),
+                  child: const Icon(Icons.error_outline, size: 100, color: Colors.red),
                 ),
 
               const SizedBox(height: 50),
@@ -258,80 +236,25 @@ class _HandshakeScreenState extends State<HandshakeScreen>
 
               if (_nfcState == NfcState.success && _foundFriendName != null) ...[
                 const SizedBox(height: 16),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: Colors.green.withOpacity(0.15),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: Colors.green.withOpacity(0.4)),
-                  ),
-                  child: Text(
-                    '+ $_foundFriendName',
-                    style: const TextStyle(
-                      color: Colors.green,
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  '+10 pont • Streak növelve!',
-                  style: TextStyle(color: Colors.white60, fontSize: 14),
+                Text(
+                  '+ $_foundFriendName',
+                  style: const TextStyle(color: Colors.green, fontSize: 24, fontWeight: FontWeight.bold),
                 ),
               ],
 
               const SizedBox(height: 40),
 
               if (_nfcState == NfcState.success)
-                ElevatedButton.icon(
+                ElevatedButton(
                   onPressed: () => Navigator.pop(context),
-                  icon: const Icon(Icons.check),
-                  label: const Text('Visszatérés'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green,
-                    padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-                  ),
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.green, padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 12)),
+                  child: const Text('Kész', style: TextStyle(color: Colors.white)),
                 )
-              else ...[
-                if (_nfcState == NfcState.error || _nfcState == NfcState.noNfc)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: ElevatedButton.icon(
-                      onPressed: () {
-                        setState(() {
-                          _nfcState = NfcState.scanning;
-                          _statusText = 'Érintsd össze a telefonokat!';
-                          _foundFriendName = null;
-                        });
-                        _controller.repeat();
-                        _startNfc();
-                      },
-                      icon: const Icon(Icons.refresh),
-                      label: const Text('Újrapróbálás'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF6C63FF),
-                        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-                      ),
-                    ),
-                  ),
+              else
                 TextButton(
                   onPressed: () => Navigator.pop(context),
-                  style: TextButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 12),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(30),
-                      side: const BorderSide(color: Colors.red, width: 1.5),
-                    ),
-                  ),
-                  child: const Text(
-                    'Mégse',
-                    style: TextStyle(color: Colors.red, fontSize: 16, fontWeight: FontWeight.w600),
-                  ),
+                  child: const Text('Mégse', style: TextStyle(color: Colors.red)),
                 ),
-              ],
             ],
           ),
         ),
