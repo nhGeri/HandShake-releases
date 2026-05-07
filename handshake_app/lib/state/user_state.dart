@@ -23,6 +23,9 @@ class UserState extends ChangeNotifier {
   // Megvásárolt itemek
   Set<String> ownedItems = {};
 
+  // NFC-vel hozzáadott barátok
+  List<String> nfcFriends = [];
+
   // Felvett kiegészítők
   String? equippedHat;
   String? equippedShirt;
@@ -77,6 +80,16 @@ class UserState extends ChangeNotifier {
 
   void addPoints(int amount) {
     points += amount;
+    notifyListeners();
+  }
+
+  void addHandshake(String friendName) {
+    totalHandshakes++;
+    points += 10;
+    currentStreak++;
+    if (!nfcFriends.contains(friendName)) {
+      nfcFriends.add(friendName);
+    }
     notifyListeners();
   }
 
