@@ -1,0 +1,46 @@
+name: Build and Release APK
+
+on:
+  push:
+    tags:
+      - 'v*' # Csak akkor fut le, ha 'v'-vel kezdődő taget pusholsz (pl. v1.0.0)
+
+permissions:
+  contents: write # Engedély kell a Release létrehozásához
+
+jobs:
+  build:
+    name: Build APK and Create Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Kód letöltése
+        uses: actions/checkout@v4
+
+      - name: ☕ Java beállítása
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: 🦋 Flutter beállítása
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+
+      - name: 📦 Csomagok telepítése
+        run: flutter pub get
+        working-directory: ./handshake_app
+
+      - name: ⚙️ APK Generálása
+        run: flutter build apk --release
+        working-directory: ./handshake_app
+
+      - name: 🚀 GitHub Release létrehozása
+        uses: softprops/action-gh-release@v2
+        with:
+          files: handshake_app/build/app/outputs/flutter-apk/app-release.apk
+          name: Release ${{ github.ref_name }}
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

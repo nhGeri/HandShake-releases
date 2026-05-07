@@ -4,6 +4,7 @@ import '../models/shop_item.dart';
 import 'avatar_viewer_screen.dart';
 import '../services/update_service.dart';
 import 'update_dialog.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 
 class ProfileSettingsScreen extends StatefulWidget {
   const ProfileSettingsScreen({super.key});
@@ -171,7 +172,40 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
               ),
             ),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 16),
+
+          // QR KÓD KÁRTYA
+          Card(
+            color: const Color(0xFF1D2137),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                children: [
+                  const Text('A te HandShake kódod', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: QrImageView(
+                      data: 'handshake_user_${userState.displayName}',
+                      version: QrVersions.auto,
+                      size: 160.0,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Mutasd meg ezt a kódod a barátaidnak a hozzáadáshoz!',
+                    style: TextStyle(color: Colors.white60, fontSize: 12),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
 
           // FRISSÍTÉS KERESÉS GOMB
           Card(

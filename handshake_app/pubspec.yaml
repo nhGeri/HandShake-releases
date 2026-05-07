@@ -40,10 +40,10 @@ dependencies:
   flutter_3d_controller: ^2.3.0
   webview_flutter: ^4.13.1
   http: ^1.6.0
-  webview_flutter_web: ^0.2.3+4
   package_info_plus: ^10.1.0
   path_provider: ^2.1.5
   open_filex: ^4.7.0
+  qr_flutter: ^4.1.0
 
 dev_dependencies:
   flutter_test:
